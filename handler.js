@@ -1,3 +1,5 @@
+// https://github.com/optimizely/aws-lambda-cloudwatch-slack
+
 console.log('[Amazon CloudWatch Notification]');
 
 /*
