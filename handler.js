@@ -9,29 +9,18 @@ console.log('[Amazon CloudWatch Notification]');
 var ALARM_CONFIG = [
   {
     condition: "OK",
-// 		channel: "#test",
-    mention: " ",
     color: "#093", // green
     severity: "OK"
   },
   {
-    condition: "INFO",
-// 		channel: "#test",
-    mention: " ",
-    color: "#FF9F21", // yellow
-    severity: "INFO"
-  },
-  {
-    condition: "CRITICAL",
-// 		channel: "#general",
-    mention: "<@channel> ",
+    condition: /ALARM|CRITICAL/,
+    mention: "@channel",
     color: "#F35A00", // orange
-    severity: "CRITICAL"
+    severity: "ALARM"
   },
   {
     condition: /./,
-// 		channel: "#general",
-    color: "#FF9F21", // yellow
+    color: "#86B5E4", // blue
     severity: "INFO"
   },
 ];
@@ -40,16 +29,27 @@ var SLACK_CONFIG = {
   // Create a new service from https://optimizely.slack.com/services/new/incoming-webhook
   // and add its URL hostname/path here
   hostname: 'hooks.slack.com',
-  path: 'YOUR_SLACK_PATH_HERE'
+  path: 'YOUR_SERVICE_HERE'
 };
 
 var http = require('https');
 var querystring = require('querystring');
+
+function formatMessage(message) {
+  var url = 'https://' + message.Region + '.console.aws.amazon.com/cloudwatch/home?region=' + message.Region + '#alarm:alarmFilter=ANY;name=' + message.AlarmName;
+  return "# " + message.AlarmName + '\n' +
+         message.AlarmDescription + '\n' +
+         "<" + url + "|More details>";
+}
+
 exports.handler = function(event, context) {
   console.log(event.Records[0]);
 
   // parse information
   var message = event.Records[0].Sns.Message;
+  var region = message.Region.toLowerCase();
+  var alarmUrl = 'https://' + region + '.console.aws.amazon.com/cloudwatch/home?region=' + region + '#alarm:alarmFilter=ANY;name=' + message.AlarmName;
+  
   var subject = event.Records[0].Sns.Subject;
   var timestamp = event.Records[0].Sns.Timestamp;
 
@@ -58,12 +58,6 @@ exports.handler = function(event, context) {
   var severity;
   var color;
   var matched;
-
-  // create post message
-  var alarmMessage = " *[Amazon CloudWatch Notification]* \n" +
-    "Subject: " + subject + "\n" +
-    "Message: " + message + "\n" +
-    "Timestamp: " + timestamp;
 
   // check subject for condition
   for (var i = 0; i < ALARM_CONFIG.length; i++) {
@@ -74,7 +68,7 @@ exports.handler = function(event, context) {
 
       matched = true;
       if (row.mention) {
-        alarmMessage = row.mention + " " + alarmMessage + " ";
+        subject = row.mention + ': ' + subject;
       }
 
       channel = row.channel;
@@ -90,11 +84,14 @@ exports.handler = function(event, context) {
   }
 
   var payloadStr = JSON.stringify({
+    "parse": "full",
     "attachments": [
       {
-        "fallback": alarmMessage,
-        "text": alarmMessage,
-        "mrkdwn_in": ["text"],
+        "pretext": subject,
+        "fallback": JSON.stringify(message),
+        "title": message.AlarmName,
+        "title_link": alarmUrl,
+        "text": message.AlarmDescription,
         "username": "AWS-CloudWatch-Lambda-bot",
         "fields": [
           {
